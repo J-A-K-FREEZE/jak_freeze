@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 import 'firebase_options.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -39,7 +40,13 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   int _counter = 0;
 
-  void _incrementCounter() {
+  void _incrementCounter() async {
+  // testowy produkt 
+  await FirebaseFirestore.instance.collection('lodowka').add({
+    'nazwa': 'Testowe Mleko',
+    'ilosc': 2,
+    'kategoria': 'Nabiał',
+  });
     setState(() {
       _counter += 2;
     });
