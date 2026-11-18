@@ -5,7 +5,7 @@ import 'package:simple_barcode_scanner/simple_barcode_scanner.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
-
+ 
 // --- 1. FUNKCJA DO POBIERANIA DANYCH Z INTERNETU ---
 Future fetchProductFromApi(String barcode) async {
   final url = Uri.parse('https://world.openfoodfacts.org/api/v0/product/$barcode.json');
@@ -27,17 +27,17 @@ Future fetchProductFromApi(String barcode) async {
   }
   return null;
 }
-
+ 
 // --- 2. START APLIKACJI I BAZY DANYCH ---
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const MyApp());
 }
-
+ 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
-
+ 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -51,21 +51,21 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-
+ 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key, required this.title});
   final String title;
-
+ 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
 }
-
+ 
 class _MyHomePageState extends State<MyHomePage> {
   // Kontrolery pól tekstowych
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _brandController = TextEditingController();
   final TextEditingController _gramsController = TextEditingController();
-
+ 
   // Lista typów produktów
   final List<String> _productTypes = [
     'Nabiał',
@@ -77,10 +77,10 @@ class _MyHomePageState extends State<MyHomePage> {
     'Inne',
   ];
   String _selectedType = 'Nabiał';
-
+ 
   String? productImage;
   bool isScanned = false;
-
+ 
   @override
   void dispose() {
     _nameController.dispose();
@@ -88,7 +88,7 @@ class _MyHomePageState extends State<MyHomePage> {
     _gramsController.dispose();
     super.dispose();
   }
-
+ 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -106,15 +106,34 @@ class _MyHomePageState extends State<MyHomePage> {
               Image.network(productImage!, height: 150)
             else
               const Icon(Icons.kitchen, size: 100, color: Colors.grey),
-
+ 
             const SizedBox(height: 20),
-
-            // --- PRZYCISK 1: Skanowanie kodem kreskowym ---
+ 
+            // --- PRZYCISK 1: Skanowanie kodem kreskowym (z obsługą wyjścia) ---
             ElevatedButton.icon(
               onPressed: () async {
-                String? res = await SimpleBarcodeScanner.scanBarcode(context);
-
-                if (res != null && res != '-1') {
+                // Otwieramy skaner w nowym oknie/ekranie
+                String? res = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => Scaffold(
+                      appBar: AppBar(
+                        title: const Text('Zeskanuj kod'),
+                        leading: IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () {
+                            // Zamyka aparat i zwraca '-1' (anulowanie)
+                            Navigator.pop(context, '-1');
+                          },
+                        ),
+                      ),
+                      body: const SimpleBarcodeScannerPage(),
+                    ),
+                  ),
+                );
+ 
+                // Sprawdzamy czy użytkownik coś zeskanował (res != null, nie jest puste i nie jest '-1')
+                if (res != null && res != '-1' && res.isNotEmpty) {
                   var productData = await fetchProductFromApi(res);
                   if (productData != null) {
                     setState(() {
@@ -137,11 +156,11 @@ class _MyHomePageState extends State<MyHomePage> {
               icon: const Icon(Icons.camera_alt),
               label: const Text('Zeskanuj kod kreskowy'),
             ),
-
+ 
             const SizedBox(height: 24),
             const Text('— lub wpisz dane ręcznie —', style: TextStyle(color: Colors.grey)),
             const SizedBox(height: 16),
-
+ 
             // --- POLE 1: Nazwa produktu ---
             TextField(
               controller: _nameController,
@@ -154,9 +173,9 @@ class _MyHomePageState extends State<MyHomePage> {
                 setState(() {});
               },
             ),
-
+ 
             const SizedBox(height: 12),
-
+ 
             // --- POLE 2: Marka ---
             TextField(
               controller: _brandController,
@@ -166,9 +185,9 @@ class _MyHomePageState extends State<MyHomePage> {
                 border: OutlineInputBorder(),
               ),
             ),
-
+ 
             const SizedBox(height: 12),
-
+ 
             // --- POLE 3: Typ produktu (lista rozwijana) ---
             DropdownButtonFormField<String>(
               value: _selectedType,
@@ -190,23 +209,23 @@ class _MyHomePageState extends State<MyHomePage> {
                 }
               },
             ),
-
+ 
             const SizedBox(height: 12),
-
+ 
             // --- POLE 4: Ilość w gramach ---
             TextField(
               controller: _gramsController,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
-                labelText: 'Ilość (w gramach)',
+                labelText: 'Ilość (g/ml/kg)',
                 hintText: 'np. 150',
                 suffixText: 'g',
                 border: OutlineInputBorder(),
               ),
             ),
-
+ 
             const SizedBox(height: 24),
-
+ 
             // --- PRZYCISK 2: Wybór daty ważności i zapis do Firebase ---
             if (_nameController.text.trim().isNotEmpty)
               ElevatedButton.icon(
@@ -218,12 +237,12 @@ class _MyHomePageState extends State<MyHomePage> {
                     firstDate: DateTime.now(),
                     lastDate: DateTime(2030),
                   );
-
+ 
                   if (wybranaData != null) {
                     final nazwa = _nameController.text.trim();
                     final marka = _brandController.text.trim();
                     final gramy = int.tryParse(_gramsController.text.trim()) ?? 0;
-
+ 
                     await FirebaseFirestore.instance.collection('lodowka').add({
                       'nazwa': nazwa,
                       'marka': marka.isEmpty ? 'Brak' : marka,
@@ -233,13 +252,13 @@ class _MyHomePageState extends State<MyHomePage> {
                       'zdjecie': productImage ?? '',
                       'kto_dodal': isScanned ? 'Skaner' : 'Ręcznie',
                     });
-
+ 
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text('Dodano $nazwa do lodówki!')),
                       );
                     }
-
+ 
                     // Czyszczenie formularza
                     setState(() {
                       _nameController.clear();
@@ -263,3 +282,4 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 }
+ 
