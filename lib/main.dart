@@ -1,136 +1,325 @@
-import 'package:material_ui/material_ui.dart';
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+
+import 'package:http/http.dart' as http;
+
+import 'package:simple_barcode_scanner/simple_barcode_scanner.dart';
+
 import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'firebase_options.dart';
+ 
+// --- 1. FUNKCJA DO POBIERANIA DANYCH Z INTERNETU (Kod koleżanki) ---
+
+Future fetchProductFromApi(String barcode) async {
+
+  final url = Uri.parse('https://world.openfoodfacts.org/api/v0/product/$barcode.json');
+
+  try {
+
+    final response = await http.get(url);
+
+    if (response.statusCode == 200) {
+
+      final data = jsonDecode(response.body);
+
+      if (data['status'] == 1) {
+
+        final product = data['product'];
+
+        return {
+
+          'name': product['product_name'] ?? 'Brak nazwy',
+
+          'brand': product['brands'] ?? 'Nieznana marka',
+
+          'image': product['image_front_url'] ?? '',
+
+        };
+
+      }
+
+    }
+
+  } catch (e) {
+
+    print('Błąd połączenia: $e');
+
+  }
+
+  return null;
+
+}
+ 
+// --- 2. START APLIKACJI I BAZY DANYCH ---
+
 void main() async {
+
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   runApp(const MyApp());
-}
 
+}
+ 
 class MyApp extends StatelessWidget {
+
   const MyApp({super.key});
-
-  // This widget is the root of your application.
+ 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: const Color.fromARGB(255, 119, 1, 103)),
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
-    );
-  }
-}
 
+  Widget build(BuildContext context) {
+
+    return MaterialApp(
+
+      title: 'Moja Lodówka',
+
+      theme: ThemeData(
+
+        colorScheme: ColorScheme.fromSeed(
+
+          seedColor: const Color.fromARGB(255, 119, 1, 103),
+
+        ),
+
+      ),
+
+      home: const MyHomePage(title: 'Dodaj produkt'),
+
+    );
+
+  }
+
+}
+ 
 class MyHomePage extends StatefulWidget {
+
   const MyHomePage({super.key, required this.title});
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
   final String title;
-
+ 
   @override
+
   State<MyHomePage> createState() => _MyHomePageState();
-}
 
+}
+ 
 class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
 
-  void _incrementCounter() async {
-  // testowy produkt 
-  await FirebaseFirestore.instance.collection('lodowka').add({
-    'nazwa': 'Testowe Mleko',
-    'ilosc': 2,
-    'kategoria': 'Nabiał',
-  });
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter+=2;
-    });
-  }
+  // Zmienne przechowujące to, co zeskanuje aparat
 
+  String scannedResult = "Nie zeskanowano żadnego produktu";
+
+  String? productName;
+
+  String? productBrand;
+
+  String? productImage;
+ 
   @override
+
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
+
     return Scaffold(
+
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
+
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
+
         title: Text(widget.title),
+
       ),
+
       body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
-          children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
+
+        child: Padding(
+
+          padding: const EdgeInsets.all(16.0),
+
+          child: Column(
+
+            mainAxisAlignment: MainAxisAlignment.center,
+
+            children: [
+
+              // Wyświetlanie zdjęcia produktu lub ikony lodówki
+
+              if (productImage != null && productImage!.isNotEmpty)
+
+                Image.network(productImage!, height: 150)
+
+              else
+
+                const Icon(Icons.kitchen, size: 100, color: Colors.grey),
+
+              const SizedBox(height: 20),
+
+              // Wyświetlanie nazwy produktu
+
+              Text(
+
+                productName ?? 'Zeskanuj produkt, aby dodać do lodówki',
+
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+
+                textAlign: TextAlign.center,
+
+              ),
+
+              // Wyświetlanie marki
+
+              if (productBrand != null)
+
+                Text('Marka: $productBrand', style: TextStyle(fontSize: 16, color: Colors.grey[700])),
+
+              const SizedBox(height: 30),
+
+              // --- PRZYCISK 1: Uruchomienie aparatu ---
+
+              ElevatedButton.icon(
+
+                onPressed: () async {
+                String? res = await SimpleBarcodeScanner.scanBarcode(context);
+
+                  if (res != null && res != '-1') {
+
+                    setState(() {
+
+                      scannedResult = res;
+
+                    });
+
+                    var productData = await fetchProductFromApi(res);
+
+                    if (productData != null) {
+
+                      setState(() {
+
+                        productName = productData['name'];
+
+                        productBrand = productData['brand'];
+
+                        productImage = productData['image'];
+
+                      });
+
+                    } else {
+
+                      setState(() {
+
+                        productName = "Nie znaleziono w bazie Open Food Facts";
+
+                        productBrand = null;
+
+                        productImage = null;
+
+                      });
+
+                    }
+
+                  }
+
+                },
+
+                icon: const Icon(Icons.camera_alt),
+
+                label: const Text('Zeskanuj kod kreskowy'),
+
+              ),
+
+              const SizedBox(height: 20),
+
+              // --- PRZYCISK 2: Wybór daty i zapis do Firebase ---
+
+              // Pokazuje się tylko, jeśli znaleziono produkt w bazie
+
+              if (productName != null && productName != "Nie znaleziono w bazie Open Food Facts")
+
+                ElevatedButton.icon(
+
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+
+                  onPressed: () async {
+
+                    DateTime? wybranaData = await showDatePicker(
+
+                      context: context,
+
+                      initialDate: DateTime.now(),
+
+                      firstDate: DateTime.now(), 
+
+                      lastDate: DateTime(2030),
+
+                    );
+ 
+                    if (wybranaData != null) {
+
+                      // Zapis do Waszej chmury!
+
+                      await FirebaseFirestore.instance.collection('lodowka').add({
+
+                        'nazwa': productName,
+
+                        'marka': productBrand ?? 'Brak',
+
+                        'zdjecie': productImage ?? '',
+
+                        'data_waznosci': wybranaData,
+
+                        'kto_dodal': 'Skaner',
+
+                      });
+ 
+                      // Komunikat na dole ekranu
+
+                      if (context.mounted) {
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+
+                          SnackBar(content: Text('Dodano $productName do lodówki!')),
+
+                        );
+
+                      }
+ 
+                      // Czyszczenie ekranu do kolejnego skanowania
+
+                      setState(() {
+
+                        productName = null;
+
+                        productBrand = null;
+
+                        productImage = null;
+
+                      });
+
+                    }
+
+                  },
+
+                  icon: const Icon(Icons.save, color: Colors.white),
+
+                  label: const Text('Wybierz datę i zapisz w lodówce', style: TextStyle(color: Colors.white)),
+
+                ),
+
+            ],
+
+          ),
+
         ),
+
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ),
+
     );
+
   }
+
 }
+ 
