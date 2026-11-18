@@ -276,6 +276,62 @@ class _MyHomePageState extends State<MyHomePage> {
                   style: TextStyle(color: Colors.white),
                 ),
               ),
+              const SizedBox(height: 40),
+            const Divider(thickness: 2),
+            const Text(
+              'TESTOWA ZAWARTOŚĆ BAZY (do usuwania):', 
+              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)
+            ),
+            const SizedBox(height: 10),
+
+            // --- 3. ROBOCZA LISTA Z CHMURY (StreamBuilder) ---
+            StreamBuilder<QuerySnapshot>(
+              // Podpinamy się pod kolekcję 'lodowka' na żywo
+              stream: FirebaseFirestore.instance.collection('lodowka').snapshots(),
+              builder: (context, snapshot) {
+                // Jeśli jeszcze się ładuje, pokaż kółko
+                if (!snapshot.hasData) return const CircularProgressIndicator();
+                
+                final produkty = snapshot.data!.docs;
+
+                // Jeśli baza jest pusta
+                if (produkty.isEmpty) return const Text('Baza jest pusta.');
+
+                // Budujemy prostą listę
+                return ListView.builder(
+                  shrinkWrap: true, // Bardzo ważne, żeby lista nie wybuchła wewnątrz ScrollView
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: produkty.length,
+                  itemBuilder: (context, index) {
+                    var produkt = produkty[index];
+                    var dane = produkt.data() as Map<String, dynamic>;
+
+                    return ListTile(
+                      leading: const Icon(Icons.fastfood),
+                      title: Text(dane['nazwa'] ?? 'Brak nazwy'),
+                      subtitle: Text('Marka: ${dane['marka'] ?? 'Brak'}'),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.red),
+                        onPressed: () async {
+                          // --- TO JEST GŁÓWNA KOMENDA USUWAJĄCA ---
+                          // Bierzemy ID konkretnego produktu (produkt.id) i mówimy bazie: skasuj to!
+                          await FirebaseFirestore.instance
+                              .collection('lodowka')
+                              .doc(produkt.id)
+                              .delete();
+                              
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Usunięto z bazy!')),
+                            );
+                          }
+                        },
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
           ],
         ),
       ),
