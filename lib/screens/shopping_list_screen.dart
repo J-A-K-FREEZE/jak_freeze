@@ -874,7 +874,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
             onChanged: (val) {
               FirebaseFirestore.instance.collection('zakupy').doc(doc.id).update({
                 'w_koszyku': val ?? false,
-              });
+              }); //hejka
             },
           ),
           Expanded(
