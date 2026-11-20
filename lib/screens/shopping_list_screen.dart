@@ -13,10 +13,16 @@ class ShoppingListScreen extends StatefulWidget {
 class _ShoppingListScreenState extends State<ShoppingListScreen> {
   final TextEditingController _itemNameController = TextEditingController();
   final TextEditingController _itemAmountController = TextEditingController(text: '1');
+  final ScrollController _scrollController = ScrollController();
+
   final _units = ['szt.', 'g', 'kg', 'ml', 'l'];
   String _selectedUnit = '';
 
   bool _isEditingEssentials = false;
+
+  late final Stream<QuerySnapshot> _shoppingStream;
+  late final Stream<QuerySnapshot> _fridgeStream;
+  late final Stream<QuerySnapshot> _essentialsStream;
 
   // Domyślne 7 produktów (wgrywane automatycznie, jeśli kolekcja 'podstawy' jest pusta)
   final _defaultEssentials = [
@@ -32,6 +38,9 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   @override
   void initState() {
     super.initState();
+    _shoppingStream = FirebaseFirestore.instance.collection('zakupy').snapshots();
+    _fridgeStream = FirebaseFirestore.instance.collection('lodowka').snapshots();
+    _essentialsStream = FirebaseFirestore.instance.collection('podstawy').snapshots();
     _seedDefaultEssentialsIfEmpty();
   }
 
@@ -48,6 +57,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   void dispose() {
     _itemNameController.dispose();
     _itemAmountController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -57,7 +67,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
 
     await FirebaseFirestore.instance.collection('zakupy').add({
       'nazwa': cleanName,
-      'ilosc': ilosc.trim().isEmpty ? '1 szt.' : ilosc.trim(),
+      'ilosc': ilosc.trim().isEmpty ? '1' : ilosc.trim(),
       'notatka': notatka,
       'w_koszyku': false,
       'utworzono': FieldValue.serverTimestamp(),
@@ -71,65 +81,119 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   }
 
   // Okienko do dodawania lub edycji produktu na liście "Zawsze w lodówce"
-  void _showEssentialDialog({String? docId, String initialName = '', String initialAmount = '1 szt.'}) {
+  void _showEssentialDialog({String? docId, String initialName = '', String initialAmount = '1'}) {
     final nameCtrl = TextEditingController(text: initialName);
-    final amountCtrl = TextEditingController(text: initialAmount);
+
+    String parsedNumber = initialAmount.trim();
+    String selectedUnit = '';
+
+    for (final u in _units) {
+      if (parsedNumber.endsWith(' $u')) {
+        selectedUnit = u;
+        parsedNumber = parsedNumber.substring(0, parsedNumber.length - u.length - 1).trim();
+        break;
+      } else if (parsedNumber.endsWith(u) && parsedNumber != u) {
+        selectedUnit = u;
+        parsedNumber = parsedNumber.substring(0, parsedNumber.length - u.length).trim();
+        break;
+      }
+    }
+
+    final amountCtrl = TextEditingController(text: parsedNumber.isEmpty ? '1' : parsedNumber);
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFFFDF8F6),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(
-          docId == null ? 'Dodaj stały produkt' : 'Edytuj stały produkt',
-          style: const TextStyle(color: Color(0xFF3A262B), fontWeight: FontWeight.bold, fontSize: 18),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameCtrl,
-              decoration: _inputDecoration('Nazwa (np. Twaróg)'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFFFDF8F6),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text(
+            docId == null ? 'Dodaj stały produkt' : 'Edytuj stały produkt',
+            style: const TextStyle(color: Color(0xFF3A262B), fontWeight: FontWeight.bold, fontSize: 18),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                decoration: _inputDecoration('Nazwa (np. Twaróg)'),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: amountCtrl,
+                keyboardType: TextInputType.number,
+                decoration: _inputDecoration('Ilość (np. 250)'),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: _units.map((unit) {
+                  final isSelected = selectedUnit == unit;
+                  return GestureDetector(
+                    onTap: () {
+                      setDialogState(() {
+                        selectedUnit = isSelected ? '' : unit;
+                      });
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: isSelected ? const Color(0xFF9E4263) : Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isSelected ? const Color(0xFF9E4263) : const Color(0xFFECDCE0),
+                        ),
+                      ),
+                      child: Text(
+                        unit,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: isSelected ? Colors.white : const Color(0xFF5A4349),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Anuluj', style: TextStyle(color: Color(0xFF8A7278))),
             ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: amountCtrl,
-              decoration: _inputDecoration('Domyślna ilość (np. 250 g)'),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF9E4263),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () async {
+                final nazwa = nameCtrl.text.trim();
+                final rawAmount = amountCtrl.text.trim().isEmpty ? '1' : amountCtrl.text.trim();
+                final ilosc = selectedUnit.isEmpty ? rawAmount : '$rawAmount $selectedUnit';
+                if (nazwa.isEmpty) return;
+
+                final data = {
+                  'nazwa': nazwa,
+                  'ilosc': ilosc,
+                  'ikona': getEmojiForProduct(null, nazwa),
+                };
+
+                if (docId == null) {
+                  await FirebaseFirestore.instance.collection('podstawy').add(data);
+                } else {
+                  await FirebaseFirestore.instance.collection('podstawy').doc(docId).update(data);
+                }
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+              child: const Text('Zapisz'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Anuluj', style: TextStyle(color: Color(0xFF8A7278))),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF9E4263),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            onPressed: () async {
-              final nazwa = nameCtrl.text.trim();
-              final ilosc = amountCtrl.text.trim().isEmpty ? '1 szt.' : amountCtrl.text.trim();
-              if (nazwa.isEmpty) return;
-
-              final data = {
-                'nazwa': nazwa,
-                'ilosc': ilosc,
-                'ikona': getEmojiForProduct(null, nazwa),
-              };
-
-              if (docId == null) {
-                await FirebaseFirestore.instance.collection('podstawy').add(data);
-              } else {
-                await FirebaseFirestore.instance.collection('podstawy').doc(docId).update(data);
-              }
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: const Text('Zapisz'),
-          ),
-        ],
       ),
     );
   }
@@ -172,6 +236,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
       backgroundColor: const Color(0xFFFDF8F6),
       body: SafeArea(
         child: SingleChildScrollView(
+          controller: _scrollController,
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -252,7 +317,6 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
               const SizedBox(height: 18),
 
               // --- 1. CO DOPISAĆ DO LISTY? ---
-              // --- 1. CO DOPISAĆ DO LISTY? ---
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -315,6 +379,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                     // Opcjonalne jednostki (kliknij, aby dodać lub odznaczyć)
                     Wrap(
                       spacing: 6,
+                      runSpacing: 6,
                       children: _units.map((unit) {
                         final isSelected = _selectedUnit == unit;
                         return GestureDetector(
@@ -376,15 +441,17 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                   ],
                 ),
               ),
+              const SizedBox(height: 24),
+
               // --- 2. DO KUPIENIA & W KOSZYKU ---
               StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance.collection('zakupy').snapshots(),
+                stream: _shoppingStream,
                 builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
+                  if (!snapshot.hasData) {
                     return const Center(child: CircularProgressIndicator());
                   }
 
-                  final allItems = snapshot.data?.docs ?? [];
+                  final allItems = snapshot.data!.docs;
                   final toBuy = allItems.where((d) => (d.data() as Map<String, dynamic>)['w_koszyku'] != true).toList();
                   final inCart = allItems.where((d) => (d.data() as Map<String, dynamic>)['w_koszyku'] == true).toList();
                   final double progress = allItems.isEmpty ? 0 : inCart.length / allItems.length;
@@ -496,7 +563,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
               const SizedBox(height: 12),
 
               StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance.collection('lodowka').snapshots(),
+                stream: _fridgeStream,
                 builder: (context, snapshot) {
                   final fridgeDocs = snapshot.data?.docs ?? [];
 
@@ -608,7 +675,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
 
                       // Karta: Zawsze w lodówce (EDYtOWALNA lista w Firebase)
                       StreamBuilder<QuerySnapshot>(
-                        stream: FirebaseFirestore.instance.collection('podstawy').snapshots(),
+                        stream: _essentialsStream,
                         builder: (context, essSnapshot) {
                           final essentials = essSnapshot.data?.docs ?? [];
 
@@ -636,6 +703,11 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                                       ],
                                     ),
                                     TextButton(
+                                      style: TextButton.styleFrom(
+                                        minimumSize: Size.zero,
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      ),
                                       onPressed: () {
                                         setState(() => _isEditingEssentials = !_isEditingEssentials);
                                       },
@@ -650,6 +722,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                                     ),
                                   ],
                                 ),
+                                const SizedBox(height: 4),
                                 const Text(
                                   'Twoje podstawowe produkty. Dopisuj je jednym kliknięciem lub edytuj listę pod siebie.',
                                   style: TextStyle(fontSize: 12, color: Color(0xFF8A7278)),
@@ -658,58 +731,75 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                                 ...essentials.map((doc) {
                                   final item = doc.data() as Map<String, dynamic>;
                                   final String nazwa = item['nazwa'] ?? '';
-                                  final String ilosc = item['ilosc'] ?? '1 szt.';
+                                  final String ilosc = item['ilosc'] ?? '1';
                                   final String ikona = item['ikona'] ?? getEmojiForProduct(null, nazwa);
                                   final bool isInFridge = fridgeNames.any((n) => n.contains(nazwa.toLowerCase()));
 
                                   return Padding(
-                                    padding: const EdgeInsets.only(bottom: 8),
-                                    child: Row(
-                                      children: [
-                                        Text(ikona, style: const TextStyle(fontSize: 20)),
-                                        const SizedBox(width: 10),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                nazwa,
-                                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF3A262B)),
-                                              ),
-                                              Text(
-                                                isInFridge ? 'Masz w lodówce' : 'Brak w lodówce · $ilosc',
-                                                style: TextStyle(
-                                                  fontSize: 11,
-                                                  color: isInFridge ? const Color(0xFF3E6B48) : const Color(0xFFB85D3B),
+                                    padding: const EdgeInsets.only(bottom: 10),
+                                    child: SizedBox(
+                                      height: 36,
+                                      child: Row(
+                                        children: [
+                                          Text(ikona, style: const TextStyle(fontSize: 20)),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Column(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  nazwa,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF3A262B)),
                                                 ),
+                                                Text(
+                                                  isInFridge ? 'Masz w lodówce' : 'Brak w lodówce · $ilosc',
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: isInFridge ? const Color(0xFF3E6B48) : const Color(0xFFB85D3B),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          if (_isEditingEssentials) ...[
+                                            IconButton(
+                                              constraints: const BoxConstraints(),
+                                              padding: const EdgeInsets.all(6),
+                                              icon: const Icon(Icons.edit_outlined, size: 18, color: Color(0xFF9E4263)),
+                                              onPressed: () => _showEssentialDialog(
+                                                docId: doc.id,
+                                                initialName: nazwa,
+                                                initialAmount: ilosc,
                                               ),
-                                            ],
-                                          ),
-                                        ),
-                                        if (_isEditingEssentials) ...[
-                                          IconButton(
-                                            icon: const Icon(Icons.edit_outlined, size: 18, color: Color(0xFF9E4263)),
-                                            onPressed: () => _showEssentialDialog(
-                                              docId: doc.id,
-                                              initialName: nazwa,
-                                              initialAmount: ilosc,
                                             ),
-                                          ),
-                                          IconButton(
-                                            icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
-                                            onPressed: () {
-                                              FirebaseFirestore.instance.collection('podstawy').doc(doc.id).delete();
-                                            },
-                                          ),
-                                        ] else
-                                          TextButton(
-                                            onPressed: () => _addToShoppingList(nazwa, ilosc, notatka: 'Podstawowy produkt'),
-                                            child: const Text(
-                                              '+ Do listy',
-                                              style: TextStyle(color: Color(0xFF9E4263), fontWeight: FontWeight.bold, fontSize: 12),
+                                            IconButton(
+                                              constraints: const BoxConstraints(),
+                                              padding: const EdgeInsets.all(6),
+                                              icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                                              onPressed: () {
+                                                FirebaseFirestore.instance.collection('podstawy').doc(doc.id).delete();
+                                              },
                                             ),
-                                          ),
-                                      ],
+                                          ] else
+                                            TextButton(
+                                              style: TextButton.styleFrom(
+                                                minimumSize: Size.zero,
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                              ),
+                                              onPressed: () => _addToShoppingList(nazwa, ilosc, notatka: 'Podstawowy produkt'),
+                                              child: const Text(
+                                                '+ Do listy',
+                                                style: TextStyle(color: Color(0xFF9E4263), fontWeight: FontWeight.bold, fontSize: 12),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
                                     ),
                                   );
                                 }),
