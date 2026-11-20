@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../helpers/product_helpers.dart';
 import 'add_product_page.dart';
 import 'expiring_screen.dart';
+import 'fridge_interior_screen.dart';
+import 'shopping_list_screen.dart';
 
 class FridgeScreen extends StatelessWidget {
   const FridgeScreen({super.key});
@@ -268,7 +270,7 @@ class FridgeScreen extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // Pasek temperatury stoi w miejscu u góry lodówki
+                                // Pasek temperatury u góry lodówki
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
@@ -350,6 +352,36 @@ class FridgeScreen extends StatelessWidget {
                                     ),
                                   ),
                                 ),
+
+                                // PRZYCISK: Zobacz wszystko -> (otwiera pełne Wnętrze lodówki)
+                                const SizedBox(height: 6),
+                                InkWell(
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => const FridgeInteriorScreen(),
+                                      ),
+                                    );
+                                  },
+                                  child: const Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          'Zobacz wszystko',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFF9E4263),
+                                          ),
+                                        ),
+                                        Icon(Icons.arrow_forward, size: 14, color: Color(0xFF9E4263)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -391,9 +423,46 @@ class FridgeScreen extends StatelessWidget {
                                   const SizedBox(height: 16),
 
                                   // Puste miejsce 2 (na Listę zakupów)
-                                  const SizedBox(height: 75),
-                                  _buildDoorShelfDivider(),
-                                  const SizedBox(height: 16),
+                                  // Półka 2: LISTA ZAKUPÓW
+InkWell(
+  onTap: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const ShoppingListScreen(),
+      ),
+    );
+  },
+  child: const Padding(
+    padding: EdgeInsets.symmetric(vertical: 6),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Icon(Icons.shopping_basket_outlined, color: Color(0xFF9E4263), size: 22),
+            Icon(Icons.chevron_right, color: Color(0xFF9E4263), size: 18),
+          ],
+        ),
+        SizedBox(height: 8),
+        Text(
+          'Lista zakupów',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF3A262B),
+          ),
+        ),
+        SizedBox(height: 2),
+        Text(
+          'Odhaczaj w sklepie',
+          style: TextStyle(fontSize: 11, color: Color(0xFF8A7278)),
+        ),
+      ],
+    ),
+  ),
+),
 
                                   // Półka 3: KOŃCZY SIĘ WAŻNOŚĆ
                                   Row(
@@ -563,7 +632,6 @@ class FridgeScreen extends StatelessWidget {
     );
   }
 
-  // Półka budowana bezpiecznie z rzędów po 2 kafelki (bez GridView)
   Widget _buildShelf(BuildContext context, String title, List<QueryDocumentSnapshot> docs) {
     final List<Widget> rows = [];
     for (int i = 0; i < docs.length; i += 2) {
