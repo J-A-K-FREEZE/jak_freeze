@@ -198,18 +198,13 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     );
   }
 
-  String _shortExpirationLabel(Timestamp? timestamp) {
-    if (timestamp == null) return '';
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final expDate = timestamp.toDate();
-    final expDay = DateTime(expDate.year, expDate.month, expDate.day);
-    final diff = expDay.difference(today).inDays;
-
-    if (diff < 0) return 'Po terminie';
-    if (diff == 0) return 'Dzisiaj';
-    if (diff == 1) return 'Jutro';
-    return 'Za $diff dni';
+  bool _isLowStock(int ilosc, String jednostka) {
+    if (ilosc <= 0) return false;
+    final u = jednostka.toLowerCase();
+    if (u == 'szt.' || u == 'szt') return ilosc <= 1;
+    if (u == 'g' || u == 'ml') return ilosc <= 100;
+    if (u == 'kg' || u == 'l') return ilosc <= 1;
+    return ilosc <= 2;
   }
 
   InputDecoration _inputDecoration(String hint) {
@@ -567,16 +562,12 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                 builder: (context, snapshot) {
                   final fridgeDocs = snapshot.data?.docs ?? [];
 
-                  final withDates = fridgeDocs.where((d) {
-                    return (d.data() as Map<String, dynamic>)['data_waznosci'] is Timestamp;
+                  final lowStock = fridgeDocs.where((d) {
+                    final data = d.data() as Map<String, dynamic>;
+                    final int ilosc = data['ilosc_gram'] ?? 0;
+                    final String jednostka = data['jednostka'] ?? 'g';
+                    return _isLowStock(ilosc, jednostka);
                   }).toList();
-
-                  withDates.sort((a, b) {
-                    final tsA = (a.data() as Map<String, dynamic>)['data_waznosci'] as Timestamp;
-                    final tsB = (b.data() as Map<String, dynamic>)['data_waznosci'] as Timestamp;
-                    return tsA.compareTo(tsB);
-                  });
-                  final top3 = withDates.take(3).toList();
 
                   final fridgeNames = fridgeDocs
                       .map((d) => ((d.data() as Map<String, dynamic>)['nazwa'] ?? '').toString().toLowerCase())
@@ -584,7 +575,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
 
                   return Column(
                     children: [
-                      // Karta: Kończy się ważność
+                      // Karta: Kończą się zapasy
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
@@ -599,37 +590,39 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                               children: [
                                 const Row(
                                   children: [
-                                    Icon(Icons.schedule, color: Color(0xFF9E4263), size: 20),
+                                    Icon(Icons.trending_down, color: Color(0xFF9E4263), size: 20),
                                     SizedBox(width: 8),
                                     Text(
-                                      'Kończy się ważność',
+                                      'Kończą się zapasy',
                                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF3A262B)),
                                     ),
                                   ],
                                 ),
                                 Text(
-                                  '${top3.length}',
+                                  '${lowStock.length}',
                                   style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF9E4263)),
                                 ),
                               ],
                             ),
                             const SizedBox(height: 6),
                             const Text(
-                              'Najpierw wykorzystaj to, co masz. Nowe opakowanie możesz dopisać na później.',
+                              'Zostało już niewiele w lodówce. Dopisz do listy, żeby nie zabrakło.',
                               style: TextStyle(fontSize: 12, color: Color(0xFF7B6369)),
                             ),
                             const SizedBox(height: 12),
-                            if (top3.isEmpty)
-                              const Text('Brak produktów z krótkim terminem.', style: TextStyle(fontSize: 13, color: Color(0xFF8A7278)))
+                            if (lowStock.isEmpty)
+                              const Text(
+                                'Wszystkie zapasy wyglądają dobrze!',
+                                style: TextStyle(fontSize: 13, color: Color(0xFF8A7278)),
+                              )
                             else
-                              ...top3.map((doc) {
+                              ...lowStock.map((doc) {
                                 final data = doc.data() as Map<String, dynamic>;
                                 final nazwa = data['nazwa'] ?? '';
                                 final gramy = data['ilosc_gram'] ?? 0;
                                 final jednostka = data['jednostka'] ?? 'g';
                                 final ikona = data['ikona'] ?? getEmojiForProduct(null, nazwa);
-                                final ts = data['data_waznosci'] as Timestamp?;
-                                final iloscStr = gramy > 0 ? '$gramy $jednostka' : '1 szt.';
+                                final iloscStr = '$gramy $jednostka';
 
                                 return Container(
                                   margin: const EdgeInsets.only(bottom: 8),
@@ -647,18 +640,18 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
                                             Text(
-                                              '$nazwa${gramy > 0 ? ' · $iloscStr' : ''}',
+                                              nazwa,
                                               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF3A262B)),
                                             ),
                                             Text(
-                                              _shortExpirationLabel(ts),
+                                              'Zostało: $iloscStr',
                                               style: const TextStyle(fontSize: 12, color: Color(0xFFB85D3B), fontWeight: FontWeight.w600),
                                             ),
                                           ],
                                         ),
                                       ),
                                       TextButton(
-                                        onPressed: () => _addToShoppingList(nazwa, iloscStr, notatka: 'Uzupełnienie zapasów'),
+                                        onPressed: () => _addToShoppingList(nazwa, iloscStr, notatka: 'Kończy się w lodówce'),
                                         child: const Text(
                                           '+ Do listy',
                                           style: TextStyle(color: Color(0xFF9E4263), fontWeight: FontWeight.bold, fontSize: 13),
