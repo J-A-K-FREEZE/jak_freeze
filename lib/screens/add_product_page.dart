@@ -5,9 +5,15 @@ import '../helpers/product_helpers.dart';
 import 'dart:async';
 
 class AddProductPage extends StatefulWidget {
-  const AddProductPage({super.key, required this.title});
+  const AddProductPage({
+    super.key,
+    required this.title,
+    this.initialName,
+    this.initialAmount,
+  });
   final String title;
-
+  final String? initialName;
+  final String? initialAmount;
   @override
   State<AddProductPage> createState() => _AddProductPageState();
 }
@@ -41,6 +47,60 @@ class _AddProductPageState extends State<AddProductPage> {
   List _searchResults = [];
 bool _isSearching = false;
 Timer? _debounce;
+
+@override
+  void initState() {
+    super.initState();
+    if (widget.initialName != null && widget.initialName!.trim().isNotEmpty) {
+      final name = widget.initialName!.trim();
+      _nameController.text = name;
+      _selectedType = _guessCategory(name);
+    }
+    if (widget.initialAmount != null && widget.initialAmount!.trim().isNotEmpty) {
+      String raw = widget.initialAmount!.trim();
+      bool matchedUnit = false;
+      for (final u in _units) {
+        if (raw.endsWith(' $u')) {
+          _selectedUnit = u;
+          raw = raw.substring(0, raw.length - u.length - 1).trim();
+          matchedUnit = true;
+          break;
+        } else if (raw.endsWith(u) && raw != u) {
+          _selectedUnit = u;
+          raw = raw.substring(0, raw.length - u.length).trim();
+          matchedUnit = true;
+          break;
+        }
+      }
+      if (!matchedUnit && raw.isNotEmpty) {
+        _selectedUnit = 'szt.';
+      }
+      _amountController.text = raw;
+    }
+  }
+
+  String _guessCategory(String name) {
+    final lower = name.toLowerCase();
+    if (lower.contains('mlek') || lower.contains('ser') || lower.contains('jogurt') || lower.contains('masł') || lower.contains('kefir') || lower.contains('śmietan') || lower.contains('twaróg') || lower.contains('jajk')) {
+      return 'Nabiał';
+    }
+    if (lower.contains('pomidor') || lower.contains('ogór') || lower.contains('brokuł') || lower.contains('marchew') || lower.contains('papryk') || lower.contains('sałat') || lower.contains('ziemniak') || lower.contains('cebul')) {
+      return 'Warzywa';
+    }
+    if (lower.contains('banan') || lower.contains('jabłk') || lower.contains('owoc') || lower.contains('truskawk') || lower.contains('pomarańcz')) {
+      return 'Owoce';
+    }
+    if (lower.contains('kurczak') || lower.contains('mięs') || lower.contains('szynk') || lower.contains('kiełbas') || lower.contains('ryb') || lower.contains('łosoś') || lower.contains('indyk')) {
+      return 'Mięso i ryby';
+    }
+    if (lower.contains('chleb') || lower.contains('bułk') || lower.contains('pieczyw')) {
+      return 'Pieczywo';
+    }
+    if (lower.contains('woda') || lower.contains('sok') || lower.contains('napój')) {
+      return 'Napoje';
+    }
+    return 'Inne';
+  }
 
 void _onSearchChanged(String query) {
   _debounce?.cancel();

@@ -902,7 +902,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF5A4349)),
           ),
           const SizedBox(width: 4),
-          // IKONKA APARATU -> przejście do skanowania kodu
+          // IKONKA APARATU -> przejście do dodawania z wypełnionymi danymi
           IconButton(
             icon: const Icon(Icons.camera_alt_outlined, size: 20, color: Color(0xFF9E4263)),
             tooltip: 'Zeskanuj i dodaj do lodówki',
@@ -910,7 +910,11 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => const AddProductPage(title: 'Dodaj produkt'),
+                  builder: (context) => AddProductPage(
+                    title: 'Dodaj produkt',
+                    initialName: nazwa,
+                    initialAmount: ilosc,
+                  ),
                 ),
               );
             },
